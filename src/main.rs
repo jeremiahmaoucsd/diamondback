@@ -161,8 +161,8 @@ fn parse_expr(s: &Sexp) -> Expr {
               [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
               [Sexp::Atom(S(op)), e] if op == "print" => Expr::Break(Box::new(parse_expr(e))),
 
-              [Sexp::Atom(S(funname)), arg] => Expr::Call1(funname.to_string(), Box::new(parse_expr(arg))),
-              [Sexp::Atom(S(funname)), arg1, arg2] => Expr::Call2(
+              [Sexp::Atom(S(funname)), arg] if !is_invalid_id(funname) => Expr::Call1(funname.to_string(), Box::new(parse_expr(arg))),
+              [Sexp::Atom(S(funname)), arg1, arg2] if !is_invalid_id(funname) => Expr::Call2(
                 funname.to_string(),
                 Box::new(parse_expr(arg1)),
                 Box::new(parse_expr(arg2)),
@@ -172,6 +172,19 @@ fn parse_expr(s: &Sexp) -> Expr {
       },
       _ => panic!("Invalid: {}", s),
   }
+}
+
+// helper function to check if a let binding ID is invalid because it is a keyword -- compile time
+// also to check if a function binding is a function binding or just a messed up number of arguments after a different key word
+fn is_invalid_id(id: &String) -> bool{
+  let invd = vec!("true","false","input",
+                  "let", "set!","if","block","loop", "break",
+                  "add1","sub1","isnum","isbool",
+                  "+","-","*","<",">",">=","<=","=",
+                  "fun", "print"
+                );
+
+  invd.iter().any(|e| e == id)
 }
 
 //helper function for let bindings
@@ -725,18 +738,6 @@ fn bindings_repeat(bindings: &Vec<(String, Expr)>) -> bool {
     binds.dedup();
 
     bindings.len() != binds.len()
-}
-
-// helper function to check if a let binding ID is invalid because it is a keyword
-fn is_invalid_id(id: &String) -> bool{
-    let invd = vec!("true","false","input",
-                    "let", "set!","if","block","loop", "break",
-                    "add1","sub1","isnum","isbool",
-                    "+","-","*","<",">",">=","<=","=",
-                    "fun", "print"
-                  );
-
-    invd.iter().any(|e| e == id)
 }
 
 //error in compiling definitions if a definition is repeated

@@ -713,6 +713,16 @@ success_tests! {
         input: "9",
         expected: "9\nfalse\nfalse",
     }
+
+    // ========================================================= //
+    // TEST PRINT                                                //
+    // ========================================================= //
+    {
+        name: print_simple,
+        file: "print_simple.snek",
+        input: "7",
+        expected: "5\n5\n40\n40",
+    }
 }
 
 runtime_error_tests! {
@@ -783,6 +793,11 @@ runtime_error_tests! {
 }
 
 static_error_tests! {
+    {
+        name: test_fail_sub1_args,
+        file: "test_fail_sub1_args.snek",
+        expected: "Invalid",
+    }
     {
         name: test_fail_number_bounds1,
         file: "test_fail_number_bounds1.snek",
