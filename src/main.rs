@@ -655,7 +655,8 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
           if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
           if funname_params(defs, name) != argslength as i64 {panic! ("function called with incorrect number of params: {}", name)};
 
-          let offset: i64 = (argslength as i64 + 1) * WORD_SIZE; // one extra word for rdi saving, one for each arg
+          let dex = argslength + 1;
+          let offset: i64 = if dex % 2 == 1 {dex * WORD_SIZE} else {(dex+1)* WORD_SIZE}; // one extra word for rdi saving, one for each arg
 
           let mut e = Vec::<Instr>::new();
 
@@ -802,7 +803,8 @@ fn depth_raw(e: &Expr) -> i64 {
       Expr::Set(_, expr) => depth_raw(expr),
       Expr::Block(exprs) => exprs.iter().map(|expr| depth_raw(expr)).max().unwrap_or(0),
       Expr::Call(_, exprs) => {
-        call_depth(exprs)
+        let depth = call_depth(exprs);
+        if depth % 2 == 0 {depth} else {depth + 1}
       },
   }
 }
