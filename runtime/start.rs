@@ -11,15 +11,45 @@ extern "C" {
 
 #[export_name = "\x01snek_error"]
 pub extern "C" fn snek_error(errcode: i64) {
-    // TODO: print error message according to writeup
-    eprintln!("an error ocurred {errcode}");
+    if errcode == 3 {
+        eprintln!("an overflow occured");
+    }
+    else if errcode == 7 {
+        eprintln!("an invalid argument was used");
+    }
+    else {eprintln!("an error ocurred {errcode}");}
     std::process::exit(1);
 }
 
-fn parse_input(input: &str) -> u64 {
-    // TODO: parse the input string into internal value representation
-    0
+#[no_mangle]
+#[export_name = "\x01snek_print"]
+fn snek_print(val : u64) -> i64 {
+    if val == 3 { println!("true"); }
+    else if val == 1 { println!("false"); }
+    else if val % 2 == 0 { println!("{}", (val as i64) >> 1); }
+    else {
+      println!("Unknown value: {}", val);
+    }
+    return val as i64;
 }
+
+fn parse_input(input: &str) -> u64 {
+
+    let min_num = -4611686018427387904;
+    let max_num = 4611686018427387903;
+
+    // TODO: parse the input string into internal value representation
+    if input == "false" {1}
+    else if input == "" {1}
+    else if input == "true" {3}
+    else { 
+        match input.parse::<i64>() {
+            Ok(n) if n >= min_num && n <= max_num => (n << 1) as u64,
+            _ => panic! ("bad input"),
+        }
+    }
+}
+
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -27,5 +57,5 @@ fn main() {
     let input = parse_input(&input);
 
     let i: u64 = unsafe { our_code_starts_here(input) };
-    println!("{i}");
+    snek_print(i);
 }
