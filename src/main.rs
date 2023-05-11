@@ -7,6 +7,7 @@ use sexp::*;
 
 use im::{hashmap,HashMap};
 
+const WORD_SIZE: i64 = 8;
 
 //parser enums (Expr) ---------------------------------------------------
 #[derive(Debug)]
@@ -334,7 +335,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
                 }
                 
                 let mut val_is = compile_expr_to_instrs(&val, si_mut, &nenv, br, l, main, defs);
-                let offset = si_mut * 8;
+                let offset = si_mut * WORD_SIZE;
                 nenv = nenv.update(name.to_string(), offset);
 
                 instrs.append(&mut val_is);
@@ -394,7 +395,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::UnOp(Op1::Print, subexpr) => {
           let mut e = compile_expr_to_instrs(subexpr, si, env, br, l, main, defs);
           let index = if si % 2 == 1 {si + 2} else {si + 1};
-          let offset = index * 8;
+          let offset = index * WORD_SIZE;
 
           e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
           e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RDI)));
@@ -409,7 +410,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Plus, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -431,7 +432,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Minus, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -456,7 +457,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Times, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -480,7 +481,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Equal, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             e1_instr.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP,stack_offset), Val::Reg(Reg::RAX)));
             e1_instr.append(&mut e2_instr); 
@@ -500,7 +501,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Greater, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -522,7 +523,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::GreaterEqual, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -544,7 +545,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::Less, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -566,7 +567,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         Expr::BinOp(Op2::LessEqual, e1, e2) => {
             let mut e1_instr = compile_expr_to_instrs(e1, si, env, br, l, main, defs);
             let mut e2_instr = compile_expr_to_instrs(e2, si+1, env, br, l, main, defs);
-            let stack_offset = si * 8;
+            let stack_offset = si * WORD_SIZE;
 
             //check for invalid type
             e1_instr.append(&mut if_bool_err.clone());
@@ -642,14 +643,14 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
           if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
 
           let mut e = compile_expr_to_instrs(arg, si, env, br, l, main, defs);
-          let offset = 2 * 8; // one extra word for rdi saving, one for arg
+          let offset = 2 * WORD_SIZE; // one extra word for rdi saving, one for arg
           
           e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
           e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RAX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, 8), Val::Reg(Reg::RDI)));
+          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, WORD_SIZE), Val::Reg(Reg::RDI)));
           e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
           e.push(Instr::ICall(FuncVal::UserDef(name.to_string())));
-          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, 8)));
+          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, WORD_SIZE)));
           e.push(Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset)));
 
           e
@@ -659,19 +660,20 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
 
           let mut e = compile_expr_to_instrs(arg1, si, env, br, l, main, defs); //arg1_is
           let mut arg2_is = compile_expr_to_instrs(arg2, si+1, env, br, l, main, defs);
-          let curr_word = si * 8;
-          let offset = 3*8;
+          let curr_word = si * WORD_SIZE;
+          let offset = 3*WORD_SIZE;
           let curr_word_after_sub = offset + curr_word;
+          let two_words = WORD_SIZE*2;
           
           e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, curr_word), Val::Reg(Reg::RAX)));
           e.append(&mut arg2_is);
           e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
           e.push(Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffsetAccess(Reg::RSP, curr_word_after_sub)));
           e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RBX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, 8), Val::Reg(Reg::RAX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, 16), Val::Reg(Reg::RDI)));
+          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, WORD_SIZE), Val::Reg(Reg::RAX)));
+          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, two_words), Val::Reg(Reg::RDI)));
           e.push(Instr::ICall(FuncVal::UserDef(name.to_string())));
-          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, 16)));
+          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, two_words)));
           e.push(Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset)));
 
           e
@@ -685,9 +687,9 @@ fn compile_def_instrs(d: &Definition, defs: &Vec<Definition>, l: &mut i64)  -> V
   match d {
     Fun1(name, arg, body) => {
         let depth = depth(body);
-        let offset = depth * 8;
+        let offset = depth * WORD_SIZE;
         let body_env = hashmap! {
-            arg.to_string() => (depth + 1)*8
+            arg.to_string() => (depth + 1)*WORD_SIZE
         };
         let mut body_is = compile_expr_to_instrs(body, 0, &body_env, &LabelVal::NOTSET, l, false, defs);
 
@@ -699,11 +701,12 @@ fn compile_def_instrs(d: &Definition, defs: &Vec<Definition>, l: &mut i64)  -> V
         e
     }
     Fun2(name, arg1, arg2, body) => {
+      if arg1 == arg2 {panic! ("duplicate parameters for 2 argument function")};
         let depth = depth(body);
-        let offset = depth * 8;
+        let offset = depth * WORD_SIZE;
         let body_env = hashmap! {
-            arg1.to_string() => (depth + 1)*8,
-            arg2.to_string() => (depth + 2)*8
+            arg1.to_string() => (depth + 1)*WORD_SIZE,
+            arg2.to_string() => (depth + 2)*WORD_SIZE
         };
         let mut body_is = compile_expr_to_instrs(body, 0, &body_env, &LabelVal::NOTSET, l, false, defs);
 
@@ -719,7 +722,7 @@ fn compile_def_instrs(d: &Definition, defs: &Vec<Definition>, l: &mut i64)  -> V
 
 fn compile_main_instrs(e: &Expr, defs: &Vec<Definition>, l: &mut i64) -> Vec<Instr> {
   let depth = depth(e);
-  let offset = depth * 8;
+  let offset = depth * WORD_SIZE;
 
   let mut expr_instrs = compile_expr_to_instrs(e, 0, &HashMap::new(), &LabelVal::NOTSET, l, true, defs);
   let mut main = vec!(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
@@ -742,7 +745,7 @@ fn bindings_repeat(bindings: &Vec<(String, Expr)>) -> bool {
 
 //error in compiling definitions if a definition is repeated
 fn funname_repeat(functions: &Vec<Definition>) -> bool {
-  let mut names = functions.iter().map(|x| funname(x)).collect::<Vec<_>>();
+  let mut names = functions.iter().map(|x| funname(x)).collect::<Vec<String>>();
   names.sort();
   names.dedup();
 
@@ -763,25 +766,30 @@ fn funname(def: &Definition) -> String {
   }
 }
 
-// Generated by ChatGPT, depth
+
 fn depth(e: &Expr) -> i64 {
+  let raw = depth_raw(e);
+  if raw % 2 == 1 {raw + 1} else {raw}
+}
+// Generated by ChatGPT, depth
+fn depth_raw(e: &Expr) -> i64 {
   match e {
       Expr::Number(_) => 0,
       Expr::Boolean(_) => 0,
       Expr::Id(_) => 0,
       Expr::Let(expr1s, expr2) => {
-        let_depth(expr1s).max(depth(expr2) + expr1s.len() as i64)
+        let_depth(expr1s).max(depth_raw(expr2) + expr1s.len() as i64)
       },
-      Expr::UnOp(_, expr) => depth(expr),
-      Expr::BinOp(_, expr1, expr2) => depth(expr1).max(depth(expr2) + 1),
-      Expr::If(expr1, expr2, expr3) => depth(expr1).max(depth(expr2)).max(depth(expr3)),
-      Expr::Loop(expr) => depth(expr),
-      Expr::Break(expr) => depth(expr),
-      Expr::Set(_, expr) => depth(expr),
-      Expr::Block(exprs) => exprs.iter().map(|expr| depth(expr)).max().unwrap_or(0),
+      Expr::UnOp(_, expr) => depth_raw(expr),
+      Expr::BinOp(_, expr1, expr2) => depth_raw(expr1).max(depth_raw(expr2) + 1),
+      Expr::If(expr1, expr2, expr3) => depth_raw(expr1).max(depth_raw(expr2)).max(depth_raw(expr3)),
+      Expr::Loop(expr) => depth_raw(expr),
+      Expr::Break(expr) => depth_raw(expr),
+      Expr::Set(_, expr) => depth_raw(expr),
+      Expr::Block(exprs) => exprs.iter().map(|expr| depth_raw(expr)).max().unwrap_or(0),
 
-      Expr::Call1(_, expr) => depth(expr),
-      Expr::Call2(_, expr1, expr2) => depth(expr1).max(depth(expr2) + 1),
+      Expr::Call1(_, expr) => depth_raw(expr),
+      Expr::Call2(_, expr1, expr2) => depth_raw(expr1).max(depth_raw(expr2) + 1),
   }
 }
 
@@ -789,7 +797,7 @@ fn let_depth(exprs: &Vec<(String, Expr)>) -> i64 {
   exprs
       .iter()
       .enumerate()
-      .map(|(index, (_, expr))| depth(expr) + index as i64)
+      .map(|(index, (_, expr))| depth_raw(expr) + index as i64)
       .max()
       .unwrap_or(0)
 }
