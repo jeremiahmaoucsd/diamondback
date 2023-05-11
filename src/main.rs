@@ -5,7 +5,7 @@ use std::io::prelude::*;
 use sexp::Atom::*;
 use sexp::*;
 
-use im::{hashmap,HashMap};
+use im::HashMap;
 
 const WORD_SIZE: i64 = 8;
 
@@ -18,8 +18,7 @@ struct Program {
 
 #[derive(Debug)]
 enum Definition {
-  Fun1(String, String, Expr),
-  Fun2(String, String, String, Expr),
+  Fun(String, Vec<String>, Expr),
 }
 
 use Definition::*;
@@ -38,10 +37,8 @@ enum Expr {
     Set(String, Box<Expr>),
     Block(Vec<Expr>),
 
-    Call1(String, Box<Expr>),
-    Call2(String, Box<Expr>, Box<Expr>),
+    Call(String, Vec<Expr>),
 }
-
 
 #[derive(Debug)]
 enum Op1 {
@@ -102,14 +99,21 @@ fn parse_definition(s: &Sexp) -> Definition {
   match s {
       Sexp::List(def_vec) => match &def_vec[..] {
           [Sexp::Atom(S(keyword)), Sexp::List(name_vec), body] if keyword == "fun" => match &name_vec[..] {
-              [Sexp::Atom(S(funname)), Sexp::Atom(S(arg))] => {
-                if is_invalid_id(arg) {panic! ("invalid parameter name {}", arg);}
-                  Fun1(funname.to_string(), arg.to_string(), parse_expr(body))
-              }
-              [Sexp::Atom(S(funname)), Sexp::Atom(S(arg1)), Sexp::Atom(S(arg2))] => {
-                if is_invalid_id(arg1) {panic! ("invalid parameter name {}", arg1);}
-                else if is_invalid_id(arg2) {panic! ("invalid parameter name {}", arg2);}
-                  Fun2(funname.to_string(), arg1.to_string(), arg2.to_string(), parse_expr(body))
+              [Sexp::Atom(S(funname)), args @ ..] => {
+
+                let args: Vec<String> = args.iter().map(|arg| {
+                  match arg {
+                      Sexp::Atom(S(string_arg)) => string_arg.to_string(),
+                      _ => panic!("Invalid argument type!"),
+                  }
+                }).collect();
+                
+                if funparam_repeat(&args) {panic! ("duplicate parameters in function {}", funname)};
+
+                for arg in args.iter(){
+                  if is_invalid_id(arg) {panic! ("invalid parameter name {}", arg);}
+                }
+                  Fun(funname.to_string(), args.into_iter().map(|arg| arg.to_string()).collect::<Vec<String>>(), parse_expr(body))
               }
               _ => panic!("Bad fundef"),
           },
@@ -118,7 +122,14 @@ fn parse_definition(s: &Sexp) -> Definition {
       _ => panic!("Bad fundef"),
   }
 }
+//error in compiling definitions if arguments are repeated
+fn funparam_repeat(params: &Vec<String>) -> bool {
+  let mut params2 = params.clone();
+  params2.sort();
+  params2.dedup();
 
+  params2.len() != params.len()
+}
 
 
 fn parse_expr(s: &Sexp) -> Expr {
@@ -165,15 +176,8 @@ fn parse_expr(s: &Sexp) -> Expr {
               [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
               [Sexp::Atom(S(op)), e] if op == "print" => Expr::Break(Box::new(parse_expr(e))),
 
-              [Sexp::Atom(S(funname)), arg] if !is_invalid_id(funname) =>{
-                Expr::Call1(funname.to_string(), Box::new(parse_expr(arg)))
-              },
-              [Sexp::Atom(S(funname)), arg1, arg2] if !is_invalid_id(funname) => {
-                Expr::Call2(
-                funname.to_string(),
-                Box::new(parse_expr(arg1)),
-                Box::new(parse_expr(arg2)),
-                )
+              [Sexp::Atom(S(funname)), exprs @ ..] if !is_invalid_id(funname) =>{
+                Expr::Call(funname.to_string(), exprs.into_iter().map(parse_expr).collect::<Vec<Expr>>())
               },
               _ => panic!("Invalid: {}", s),
           }
@@ -646,47 +650,54 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
             }
             is
         },
-        Expr::Call1(name, arg) => {
+        Expr::Call(name, args) => {
+          let argslength = args.len() as i64;
           if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
-          if funname_params(defs, name) != 1 {panic! ("function called with incorrect number of params: {}", name)};
+          if funname_params(defs, name) != argslength as i64 {panic! ("function called with incorrect number of params: {}", name)};
 
-          let mut e = compile_expr_to_instrs(arg, si, env, br, l, main, defs);
-          let offset = 2 * WORD_SIZE; // one extra word for rdi saving, one for arg
+          let offset: i64 = (argslength as i64 + 1) * WORD_SIZE; // one extra word for rdi saving, one for each arg
+
+          let mut e = Vec::<Instr>::new();
+
+          for (index, arg) in args.iter().enumerate(){
+            let index = index as i64;
+            let mut argcomp = compile_expr_to_instrs(arg, si + index, env, br, l, main, defs);
+            let curr_word = (si + index)*WORD_SIZE;
+
+            e.append(&mut argcomp);
+
+            if index != argslength as i64 - 1 {
+              e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, curr_word), Val::Reg(Reg::RAX)));
+            }
+          }
           
-          e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
-          e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RAX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, WORD_SIZE), Val::Reg(Reg::RDI)));
-          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::Reg(Reg::RAX)));
+          e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset))); // shifting rsp
+          
+          for (index, _) in args.iter().enumerate(){
+            let index = index as i64;
+            let curr_word = (si + index)*WORD_SIZE;
+            let curr_word_after_sub = curr_word + offset;
+
+            if index == argslength as i64 - 1 {
+              e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, index * WORD_SIZE), Val::Reg(Reg::RAX)));
+              break;
+            }
+
+            e.push(Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffsetAccess(Reg::RSP, curr_word_after_sub)));
+            if index == 0 {
+              e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RBX)));
+            }
+            else{
+              e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, index * WORD_SIZE), Val::Reg(Reg::RBX)));
+            }
+          }
+          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, argslength as i64 * WORD_SIZE), Val::Reg(Reg::RDI)));
           e.push(Instr::ICall(FuncVal::UserDef(name.to_string())));
-          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, WORD_SIZE)));
+          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, argslength as i64 * WORD_SIZE)));
           e.push(Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset)));
 
           e
-        }
-        Expr::Call2(name, arg1, arg2) => {
-          if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
-          if funname_params(defs, name) != 2 {panic! ("function called with incorrect number of params: {}", name)};
-
-          let mut e = compile_expr_to_instrs(arg1, si, env, br, l, main, defs); //arg1_is
-          let mut arg2_is = compile_expr_to_instrs(arg2, si+1, env, br, l, main, defs);
-          let curr_word = si * WORD_SIZE;
-          let offset = 3*WORD_SIZE;
-          let curr_word_after_sub = offset + curr_word;
-          let two_words = WORD_SIZE*2;
-          
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, curr_word), Val::Reg(Reg::RAX)));
-          e.append(&mut arg2_is);
-          e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
-          e.push(Instr::IMov(Val::Reg(Reg::RBX), Val::RegOffsetAccess(Reg::RSP, curr_word_after_sub)));
-          e.push(Instr::IMov(Val::RegAccess(Reg::RSP), Val::Reg(Reg::RBX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, WORD_SIZE), Val::Reg(Reg::RAX)));
-          e.push(Instr::IMov(Val::RegOffsetAccess(Reg::RSP, two_words), Val::Reg(Reg::RDI)));
-          e.push(Instr::ICall(FuncVal::UserDef(name.to_string())));
-          e.push(Instr::IMov(Val::Reg(Reg::RDI), Val::RegOffsetAccess(Reg::RSP, two_words)));
-          e.push(Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset)));
-
-          e
-        }
+        },
       
     }
 }
@@ -694,29 +705,14 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
 fn compile_def_instrs(d: &Definition, defs: &Vec<Definition>, l: &mut i64)  -> Vec<Instr> {
   if funname_repeat(defs) {panic! ("function name overload not allowed")};
   match d {
-    Fun1(name, arg, body) => {
+    Fun(name, args, body) => {
         let depth = depth(body);
         let offset = depth * WORD_SIZE;
-        let body_env = hashmap! {
-            arg.to_string() => (depth + 1)*WORD_SIZE
-        };
-        let mut body_is = compile_expr_to_instrs(body, 0, &body_env, &LabelVal::NOTSET, l, false, defs);
+        let mut body_env = HashMap::<String,i64>::new();
+        for (index, arg) in args.iter().enumerate() {
+          body_env.insert(arg.to_string(), (depth + index as i64 + 1) * WORD_SIZE);  
+        }
 
-        let mut e = vec!(Instr::ISetFunc(FuncVal::UserDef(name.to_string())));
-        e.push(Instr::ISub(Val::Reg(Reg::RSP), Val::Imm(offset)));
-        e.append(&mut body_is);
-        e.push(Instr::IAdd(Val::Reg(Reg::RSP), Val::Imm(offset)));
-        e.push(Instr::IRet);
-        e
-    }
-    Fun2(name, arg1, arg2, body) => {
-      if arg1 == arg2 {panic! ("duplicate parameters for 2 argument function")};
-        let depth = depth(body);
-        let offset = depth * WORD_SIZE;
-        let body_env = hashmap! {
-            arg1.to_string() => (depth + 1)*WORD_SIZE,
-            arg2.to_string() => (depth + 2)*WORD_SIZE
-        };
         let mut body_is = compile_expr_to_instrs(body, 0, &body_env, &LabelVal::NOTSET, l, false, defs);
 
         let mut e = vec!(Instr::ISetFunc(FuncVal::UserDef(name.to_string())));
@@ -773,16 +769,14 @@ fn funname_params(functions: &Vec<Definition>, name: &String) -> i64 {
 
 fn number_of_params(def: &Definition) -> i64 {
   match def{
-    Definition::Fun1(_, _, _) => 1,
-    Definition::Fun2(_, _, _, _) => 2,
+    Definition::Fun(_, args, _) => args.len() as i64,
   }
 }
 
 //helper for helpers, gives a function name given a definition type
 fn funname(def: &Definition) -> String {
   match def{
-    Definition::Fun1(name, _, _) => name.to_string(),
-    Definition::Fun2(name, _, _, _) => name.to_string(),
+    Definition::Fun(name, _, _) => name.to_string(),
   }
 }
 
@@ -807,9 +801,9 @@ fn depth_raw(e: &Expr) -> i64 {
       Expr::Break(expr) => depth_raw(expr),
       Expr::Set(_, expr) => depth_raw(expr),
       Expr::Block(exprs) => exprs.iter().map(|expr| depth_raw(expr)).max().unwrap_or(0),
-
-      Expr::Call1(_, expr) => depth_raw(expr),
-      Expr::Call2(_, expr1, expr2) => depth_raw(expr1).max(depth_raw(expr2) + 1),
+      Expr::Call(_, exprs) => {
+        call_depth(exprs)
+      },
   }
 }
 
@@ -818,6 +812,15 @@ fn let_depth(exprs: &Vec<(String, Expr)>) -> i64 {
       .iter()
       .enumerate()
       .map(|(index, (_, expr))| depth_raw(expr) + index as i64)
+      .max()
+      .unwrap_or(0)
+}
+
+fn call_depth(exprs: &Vec<Expr>) -> i64 {
+  exprs
+      .iter()
+      .enumerate()
+      .map(|(index, expr)| depth_raw(expr) + index as i64)
       .max()
       .unwrap_or(0)
 }
