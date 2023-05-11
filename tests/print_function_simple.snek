@@ -1,0 +1,9 @@
+(fun (printfunc var1)
+    (block
+        (print var1)
+        (print (add1 4))
+        (print (let ((x var1)) (* 8 x)))
+    )
+)
+
+(printfunc input)

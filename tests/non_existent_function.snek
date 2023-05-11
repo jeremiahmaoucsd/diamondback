@@ -1,0 +1,4 @@
+(fun (useless)
+5)
+
+(print (kobesstillalive 45))

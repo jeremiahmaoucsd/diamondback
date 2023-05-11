@@ -713,6 +713,24 @@ success_tests! {
         input: "9",
         expected: "9\nfalse\nfalse",
     },
+    {
+        name: collatz_as_func1,
+        file: "collatz_as_func.snek",
+        input: "7",
+        expected: "17",
+    },
+    {
+        name: collatz_as_func2,
+        file: "collatz_as_func.snek",
+        input: "70",
+        expected: "15",
+    },
+    {
+        name: collatz_as_func3,
+        file: "collatz_as_func.snek",
+        input: "192938",
+        expected: "29",
+    },
 
     // ========================================================= //
     // TEST PRINT                                                //
@@ -721,6 +739,12 @@ success_tests! {
         name: print_simple,
         file: "print_simple.snek",
         input: "7",
+        expected: "5\n5\n40\n40",
+    },
+    {
+        name: print_function_simple,
+        file: "print_function_simple.snek",
+        input: "5",
         expected: "5\n5\n40\n40",
     },
 }
@@ -869,5 +893,41 @@ static_error_tests! {
         name: duplicate_params,
         file: "duplicate_params.snek",
         expected: "",
-    }
+    },
+    {
+        name: invalid_params,
+        file: "invalid_params.snek",
+        expected: "",
+    },
+    {
+        name: invalid_func_name,
+        file: "invalid_func_name.snek",
+        expected: "",
+    },
+    {
+        name: input_in_function_def,
+        file: "input_in_function_def.snek",
+        expected: "",
+    },
+    {
+        name: non_existent_function,
+        file: "non_existent_function.snek",
+        expected: "",
+    },
+    {
+        name: test_fail_samename_function,
+        file: "test_fail_samename_function.snek",
+        expected: "",
+    },
+    {
+        name: test_fail_argnumber_function,
+        file: "test_fail_argnumber_function.snek",
+        expected: "",
+    },
+    {
+        name: test_fail_parse_function,
+        file: "test_fail_parse_function.snek",
+        expected: "Invalid",
+    },
+
 }

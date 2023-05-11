@@ -1,0 +1,10 @@
+(fun (isnum n)
+  false
+)
+(fun (isbool n)
+  false
+)
+(block
+  (print input)
+  (print (iseven input))
+)
