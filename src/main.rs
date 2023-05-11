@@ -103,9 +103,12 @@ fn parse_definition(s: &Sexp) -> Definition {
       Sexp::List(def_vec) => match &def_vec[..] {
           [Sexp::Atom(S(keyword)), Sexp::List(name_vec), body] if keyword == "fun" => match &name_vec[..] {
               [Sexp::Atom(S(funname)), Sexp::Atom(S(arg))] => {
+                if is_invalid_id(arg) {panic! ("invalid parameter name {}", arg);}
                   Fun1(funname.to_string(), arg.to_string(), parse_expr(body))
               }
               [Sexp::Atom(S(funname)), Sexp::Atom(S(arg1)), Sexp::Atom(S(arg2))] => {
+                if is_invalid_id(arg1) {panic! ("invalid parameter name {}", arg1);}
+                else if is_invalid_id(arg2) {panic! ("invalid parameter name {}", arg2);}
                   Fun2(funname.to_string(), arg1.to_string(), arg2.to_string(), parse_expr(body))
               }
               _ => panic!("Bad fundef"),
@@ -162,12 +165,16 @@ fn parse_expr(s: &Sexp) -> Expr {
               [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
               [Sexp::Atom(S(op)), e] if op == "print" => Expr::Break(Box::new(parse_expr(e))),
 
-              [Sexp::Atom(S(funname)), arg] if !is_invalid_id(funname) => Expr::Call1(funname.to_string(), Box::new(parse_expr(arg))),
-              [Sexp::Atom(S(funname)), arg1, arg2] if !is_invalid_id(funname) => Expr::Call2(
+              [Sexp::Atom(S(funname)), arg] if !is_invalid_id(funname) =>{
+                Expr::Call1(funname.to_string(), Box::new(parse_expr(arg)))
+              },
+              [Sexp::Atom(S(funname)), arg1, arg2] if !is_invalid_id(funname) => {
+                Expr::Call2(
                 funname.to_string(),
                 Box::new(parse_expr(arg1)),
                 Box::new(parse_expr(arg2)),
-            ),
+                )
+              },
               _ => panic!("Invalid: {}", s),
           }
       },
@@ -641,6 +648,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         },
         Expr::Call1(name, arg) => {
           if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
+          if funname_params(defs, name) != 1 {panic! ("function called with incorrect number of params: {}", name)};
 
           let mut e = compile_expr_to_instrs(arg, si, env, br, l, main, defs);
           let offset = 2 * WORD_SIZE; // one extra word for rdi saving, one for arg
@@ -657,6 +665,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
         }
         Expr::Call2(name, arg1, arg2) => {
           if !funname_exists(defs, name) {panic!("function call to undefined function: {name}")};
+          if funname_params(defs, name) != 2 {panic! ("function called with incorrect number of params: {}", name)};
 
           let mut e = compile_expr_to_instrs(arg1, si, env, br, l, main, defs); //arg1_is
           let mut arg2_is = compile_expr_to_instrs(arg2, si+1, env, br, l, main, defs);
@@ -683,7 +692,7 @@ fn compile_expr_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &La
 }
 
 fn compile_def_instrs(d: &Definition, defs: &Vec<Definition>, l: &mut i64)  -> Vec<Instr> {
-  if funname_repeat(defs) {panic! ("function names repeat")};
+  if funname_repeat(defs) {panic! ("function name overload not allowed")};
   match d {
     Fun1(name, arg, body) => {
         let depth = depth(body);
@@ -756,6 +765,17 @@ fn funname_repeat(functions: &Vec<Definition>) -> bool {
 fn funname_exists(functions: &Vec<Definition>, name: &String) -> bool {
   let names = functions.iter().map(|x| funname(x)).collect::<Vec<_>>();
   names.iter().any(|e| e == name)
+}
+
+fn funname_params(functions: &Vec<Definition>, name: &String) -> i64 {
+  functions.iter().map(|func| if *name == funname(func) {number_of_params(func)} else {0}).max().unwrap_or(0)
+}
+
+fn number_of_params(def: &Definition) -> i64 {
+  match def{
+    Definition::Fun1(_, _, _) => 1,
+    Definition::Fun2(_, _, _, _) => 2,
+  }
 }
 
 //helper for helpers, gives a function name given a definition type
