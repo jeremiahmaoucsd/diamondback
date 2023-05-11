@@ -115,11 +115,11 @@ fn parse_definition(s: &Sexp) -> Definition {
                 }
                   Fun(funname.to_string(), args.into_iter().map(|arg| arg.to_string()).collect::<Vec<String>>(), parse_expr(body))
               }
-              _ => panic!("Bad fundef"),
+              _ => panic!("Invalid"),
           },
-          _ => panic!("Bad fundef"),
+          _ => panic!("Invalid"),
       },
-      _ => panic!("Bad fundef"),
+      _ => panic!("Invalid"),
   }
 }
 //error in compiling definitions if arguments are repeated
