@@ -1,0 +1,5 @@
+(block
+    (print 5)
+    (print (add1 4))
+    (print (let ((x 5)) (* 8 x)))
+)
