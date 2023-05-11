@@ -7,6 +7,140 @@ use sexp::*;
 
 use im::HashMap;
 
+//parser enums (Expr) ---------------------------------------------------
+
+#[derive(Debug)]
+enum Expr {
+    Number(i64),
+    Boolean(bool),
+    Id(String),
+    Let(Vec<(String, Expr)>, Box<Expr>),
+    UnOp(Op1, Box<Expr>),
+    BinOp(Op2, Box<Expr>, Box<Expr>),
+    If(Box<Expr>, Box<Expr>, Box<Expr>),
+    Loop(Box<Expr>),
+    Break(Box<Expr>),
+    Set(String, Box<Expr>),
+    Block(Vec<Expr>),
+}
+
+
+#[derive(Debug)]
+enum Op1 {
+    Add1,
+    Sub1,
+    IsNum, 
+    IsBool, 
+}
+
+#[derive(Debug)]
+enum Op2 {
+    Plus,
+    Minus,
+    Times,
+    Equal,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
+}
+
+
+
+//Parsing starts here --------------------------------------------------------------------------------------------------------------------------------------------------------
+fn parse_expr(s: &Sexp) -> Expr {
+  let min_num = -4611686018427387904;
+  let max_num = 4611686018427387903;
+
+  match s {
+      Sexp::Atom(I(n)) if i64::try_from(*n).unwrap() >= min_num && i64::try_from(*n).unwrap() <= max_num => Expr::Number(i64::try_from(*n).unwrap()), // handle literal overflow here
+      Sexp::Atom(S(name)) if name == "true" => Expr::Boolean(true),
+      Sexp::Atom(S(name)) if name == "false" => Expr::Boolean(false),
+
+      Sexp::Atom(S(id)) => Expr::Id(id.to_string()),
+      Sexp::List(vec) => {
+          match &vec[..] {
+              [Sexp::Atom(S(op)), e] if op == "add1" => Expr::UnOp(Op1::Add1, Box::new(parse_expr(e))),
+              [Sexp::Atom(S(op)), e] if op == "sub1" => Expr::UnOp(Op1::Sub1, Box::new(parse_expr(e))),
+              [Sexp::Atom(S(op)), e] if op == "isnum" => Expr::UnOp(Op1::IsNum, Box::new(parse_expr(e))),
+              [Sexp::Atom(S(op)), e] if op == "isbool" => Expr::UnOp(Op1::IsBool, Box::new(parse_expr(e))),
+              [Sexp::Atom(S(op)), e1, e2] if op == "+" => Expr::BinOp(Op2::Plus, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == "-" => Expr::BinOp(Op2::Minus, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == "*" => Expr::BinOp(Op2::Times, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              
+              [Sexp::Atom(S(op)), Sexp::List(bindings), body] if op == "let" => {
+                  if bindings.len() == 0{
+                      panic!("Invalid");
+                  }
+                  Expr::Let(bindings.iter().map(|x| parse_bind(x)).collect::<Vec<(String, Expr)>>(),Box::new(parse_expr(body)))
+              },
+              [Sexp::Atom(S(op)), e1, e2] if op == "<" => Expr::BinOp(Op2::Less, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == ">" => Expr::BinOp(Op2::Greater, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == ">=" => Expr::BinOp(Op2::GreaterEqual, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == "<=" => Expr::BinOp(Op2::LessEqual, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+              [Sexp::Atom(S(op)), e1, e2] if op == "=" => Expr::BinOp(Op2::Equal, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
+
+              [Sexp::Atom(S(op)), Sexp::Atom(S(id)), e] if op == "set!" => Expr::Set(id.to_string(), Box::new(parse_expr(e))),
+
+              [Sexp::Atom(S(op)), e1, e2, e3] if op == "if" => Expr::If(Box::new(parse_expr(e1)),Box::new(parse_expr(e2)),Box::new(parse_expr(e3))),
+              [Sexp::Atom(S(op)), exprs @ ..] if op == "block" && exprs.len() > 0 => Expr::Block(exprs.into_iter().map(parse_expr).collect::<Vec<Expr>>()),
+              [Sexp::Atom(S(op)), e] if op == "loop" => Expr::Loop(Box::new(parse_expr(e))),
+              [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
+              _ => panic!("Invalid"),
+          }
+      },
+      _ => panic!("Invalid"),
+  }
+}
+
+fn parse_bind(s: &Sexp) -> (String, Expr) {
+  match s {
+      Sexp::List(vec) => {
+          match &vec[..] {
+              [Sexp::Atom(S(id)), e] => (id.to_string(), parse_expr(e)),
+              _ => panic!("Invalid"),
+          }
+      },
+      _ => panic!("Invalid"),
+  }
+}
+
+
+//Compiler (Instr) enums ---------------------------------------------------------------------------------------------------------------------------------------
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum Instr {
+
+    IMov(Val, Val),
+    ICmove(Val, Val),
+    ICmovne(Val, Val),
+    ICmovl(Val, Val),
+    ICmovle(Val, Val),
+    ICmovg(Val, Val),
+    ICmovge(Val, Val),
+
+    // Arithmetic
+    IAdd(Val, Val),
+    ISub(Val, Val),
+    IMul(Val, Val),
+    IDiv(Val),
+    ISar(Val, Val), // shift arithmetic right
+
+    // Logic
+    IXor(Val, Val),
+
+    // working with jumps
+    ICmp(Val, Val),
+    ITest(Val, Val),
+    
+    ISetLabel(LabelVal),
+    IJmp(LabelVal),
+    IJnz(LabelVal),
+    IJz(LabelVal),
+    IJe(LabelVal),
+    IJne(LabelVal),
+    IJo(LabelVal),
+}
+
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum Val {
     Reg(Reg),
@@ -45,139 +179,6 @@ enum Label {
     LOOPEND,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum Instr {
-
-    IMov(Val, Val),
-    ICmove(Val, Val),
-    ICmovne(Val, Val),
-    ICmovl(Val, Val),
-    ICmovle(Val, Val),
-    ICmovg(Val, Val),
-    ICmovge(Val, Val),
-
-
-    // Arithmetic
-
-    IAdd(Val, Val),
-    ISub(Val, Val),
-    IMul(Val, Val),
-    IDiv(Val),
-    ISar(Val, Val), // shift arithmetic right
-
-    // Logic
-    IXor(Val, Val),
-
-    // working with jumps
-    ICmp(Val, Val),
-    ITest(Val, Val),
-    
-    ISetLabel(LabelVal),
-    IJmp(LabelVal),
-    IJnz(LabelVal),
-    IJz(LabelVal),
-    IJe(LabelVal),
-    IJne(LabelVal),
-    IJo(LabelVal),
-}
-
-#[derive(Debug)]
-enum Op1 {
-    Add1,
-    Sub1,
-    
-    //new
-    IsNum, 
-    IsBool, 
-}
-
-#[derive(Debug)]
-enum Op2 {
-    Plus,
-    Minus,
-    Times,
-
-    //new
-    Equal,
-    Greater,
-    GreaterEqual,
-    Less,
-    LessEqual,
-}
-
-#[derive(Debug)]
-enum Expr {
-    Number(i64),
-    Boolean(bool),
-    Id(String),
-    Let(Vec<(String, Expr)>, Box<Expr>),
-    UnOp(Op1, Box<Expr>),
-    BinOp(Op2, Box<Expr>, Box<Expr>),
-    If(Box<Expr>, Box<Expr>, Box<Expr>),
-    Loop(Box<Expr>),
-    Break(Box<Expr>),
-    Set(String, Box<Expr>),
-    Block(Vec<Expr>),
-}
-
-//Parsing starts here --------------------------------------------------------------------------------------------------------------------------------------------------------
-
-fn parse_expr(s: &Sexp) -> Expr {
-    let min_num = -4611686018427387904;
-    let max_num = 4611686018427387903;
-
-    match s {
-        Sexp::Atom(I(n)) if i64::try_from(*n).unwrap() >= min_num && i64::try_from(*n).unwrap() <= max_num => Expr::Number(i64::try_from(*n).unwrap()), // handle literal overflow here
-        Sexp::Atom(S(name)) if name == "true" => Expr::Boolean(true),
-        Sexp::Atom(S(name)) if name == "false" => Expr::Boolean(false),
-
-        Sexp::Atom(S(id)) => Expr::Id(id.to_string()),
-        Sexp::List(vec) => {
-            match &vec[..] {
-                [Sexp::Atom(S(op)), e] if op == "add1" => Expr::UnOp(Op1::Add1, Box::new(parse_expr(e))),
-                [Sexp::Atom(S(op)), e] if op == "sub1" => Expr::UnOp(Op1::Sub1, Box::new(parse_expr(e))),
-                [Sexp::Atom(S(op)), e] if op == "isnum" => Expr::UnOp(Op1::IsNum, Box::new(parse_expr(e))),
-                [Sexp::Atom(S(op)), e] if op == "isbool" => Expr::UnOp(Op1::IsBool, Box::new(parse_expr(e))),
-                [Sexp::Atom(S(op)), e1, e2] if op == "+" => Expr::BinOp(Op2::Plus, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == "-" => Expr::BinOp(Op2::Minus, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == "*" => Expr::BinOp(Op2::Times, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                
-                [Sexp::Atom(S(op)), Sexp::List(bindings), body] if op == "let" => {
-                    if bindings.len() == 0{
-                        panic!("Invalid");
-                    }
-                    Expr::Let(bindings.iter().map(|x| parse_bind(x)).collect::<Vec<(String, Expr)>>(),Box::new(parse_expr(body)))
-                },
-                [Sexp::Atom(S(op)), e1, e2] if op == "<" => Expr::BinOp(Op2::Less, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == ">" => Expr::BinOp(Op2::Greater, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == ">=" => Expr::BinOp(Op2::GreaterEqual, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == "<=" => Expr::BinOp(Op2::LessEqual, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-                [Sexp::Atom(S(op)), e1, e2] if op == "=" => Expr::BinOp(Op2::Equal, Box::new(parse_expr(e1)),Box::new(parse_expr(e2))),
-
-                [Sexp::Atom(S(op)), Sexp::Atom(S(id)), e] if op == "set!" => Expr::Set(id.to_string(), Box::new(parse_expr(e))),
-
-                [Sexp::Atom(S(op)), e1, e2, e3] if op == "if" => Expr::If(Box::new(parse_expr(e1)),Box::new(parse_expr(e2)),Box::new(parse_expr(e3))),
-                [Sexp::Atom(S(op)), exprs @ ..] if op == "block" && exprs.len() > 0 => Expr::Block(exprs.into_iter().map(parse_expr).collect::<Vec<Expr>>()),
-                [Sexp::Atom(S(op)), e] if op == "loop" => Expr::Loop(Box::new(parse_expr(e))),
-                [Sexp::Atom(S(op)), e] if op == "break" => Expr::Break(Box::new(parse_expr(e))),
-                _ => panic!("Invalid"),
-            }
-        },
-        _ => panic!("Invalid"),
-    }
-}
-
-fn parse_bind(s: &Sexp) -> (String, Expr) {
-    match s {
-        Sexp::List(vec) => {
-            match &vec[..] {
-                [Sexp::Atom(S(id)), e] => (id.to_string(), parse_expr(e)),
-                _ => panic!("Invalid"),
-            }
-        },
-        _ => panic!("Invalid"),
-    }
-}
 
 //Compiling starts here ------------------------------------------------------------------------------------------------------------------------------------------------------
 /* 
@@ -495,16 +496,6 @@ fn compile_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &LabelVa
             cond_is
         },
         Expr::Loop(e) => {
-            /*let startloop = new_label(l, "loop");
-            let endloop = new_label(l, "loopend");
-            let e_is = compile_expr(e, si, env, &endloop, l);
-            format!("
-              {startloop}:
-              {e_is}
-              jmp {startloop}
-              {endloop}:
-            ") */
-
             let startloop = LabelVal::Label(Label::LOOP, int_post_inc(l));
             let endloop = LabelVal::Label(Label::LOOPEND, int_post_inc(l));
             let mut e_is = compile_to_instrs(e, si, env, &endloop, l);
@@ -517,11 +508,6 @@ fn compile_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &LabelVa
             is
         },
         Expr::Break(e) => {
-            /*let e_is = compile_expr(e, si, env, brake, l);
-            format!("
-              {e_is}
-              jmp {brake}
-            ") */
             if *br == LabelVal::NOT_SET {
                 panic!("break exists outside of loop");
             }
@@ -530,15 +516,6 @@ fn compile_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &LabelVa
             e_is
         },
         Expr::Set(name, val) => {
-            /*let offset = env.get(name).unwrap() * 8;
-
-            let save = format!("mov [rsp - {offset}], rax");
-            let val_is = compile_expr(val, si, env, brake, l);
-            format!("
-              {val_is}
-              {save}
-              ") */
-
             if env.contains_key(name) == false {
                 panic! ("Unbound variable identifier {}", name);
             }
@@ -557,6 +534,8 @@ fn compile_to_instrs(e: &Expr, si: i64, env: &HashMap<String, i64>, br: &LabelVa
         },
     }
 }
+
+// compiler helper functions -------------------------------------------------------------
 
 // helper function for let bindings
 fn bindings_repeat(bindings: &Vec<(String, Expr)>) -> bool {
@@ -577,6 +556,8 @@ fn is_invalid_id(id: &String) -> bool{
 
     invd.iter().any(|e| e == id)
 }
+
+//compiler Instr to string methods -------------------------------------------------------
 
 fn instr_to_str(i: &Instr) -> String {
     match i {
@@ -740,6 +721,9 @@ fn label_to_str(l: &Label) -> String {
 }
 
 
+
+//bringing it all together --------------------------------------------------------------------------
+
 fn compile(e: &Expr) -> String {
     let mut labels = 0;
     let instrs = compile_to_instrs(e, 2, &HashMap::<String, i64>::new(), &LabelVal::NOT_SET, &mut labels);
@@ -755,6 +739,8 @@ fn compile(e: &Expr) -> String {
     }
     curr
 }
+
+
 //main function starts here --------------------------------------------------------------------------------------------------------------------------------------------------
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = env::args().collect();
